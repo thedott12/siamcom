@@ -60,6 +60,7 @@
   --neutral: #eeece9;
   --charcoal: #241e20;
   --on-dark: #f3eeee;
+  --motion-ease: cubic-bezier(.22, 1, .36, 1);
   --font-body: "Anuphan", "Leelawadee UI", sans-serif;
   --font-display: "Space Grotesk", "Bai Jamjuree", sans-serif;
   --font-heading: "Bai Jamjuree", "Leelawadee UI", sans-serif;
@@ -276,7 +277,8 @@ button { padding: 0; border: 0; background: transparent; cursor: pointer; }
   background: var(--white);
 }
 .photo-frame img {
-  position: relative;
+  position: absolute;
+  inset: 0;
   inline-size: 100%;
   block-size: 100%;
   object-fit: cover;
@@ -372,6 +374,7 @@ button { padding: 0; border: 0; background: transparent; cursor: pointer; }
   letter-spacing: -.018em;
 }
 .carousel {
+  --carousel-paper: #f4f1ea;
   display: grid;
   align-content: center;
   justify-items: center;
@@ -379,10 +382,22 @@ button { padding: 0; border: 0; background: transparent; cursor: pointer; }
   min-inline-size: 0;
   padding: 11px 20px;
   border-radius: 22px;
-  background: #f4f1ea;
+  background: var(--carousel-paper);
 }
-.carousel-pictures { inline-size: min(252px, 100%); block-size: 146px; touch-action: pan-y pinch-zoom; }
-.carousel-pictures img { inline-size: 100%; block-size: 100%; object-fit: contain; }
+.carousel-pictures {
+  position: relative;
+  inline-size: min(252px, 100%);
+  block-size: 146px;
+  touch-action: pan-y pinch-zoom;
+}
+.carousel-pictures img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+  background: var(--carousel-paper);
+}
 .carousel-controls {
   display: flex;
   align-items: center;
@@ -943,4 +958,64 @@ button { padding: 0; border: 0; background: transparent; cursor: pointer; }
   .hero-pagination button[aria-current]::after,
   .carousel-markers [data-course-slide][aria-current]::after { background: Highlight; }
   .language a[aria-current] { outline: 2px solid Highlight; outline-offset: -3px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-intro-motion] .hero-copy {
+    animation: settle-copy 420ms var(--motion-ease);
+  }
+
+  [data-intro-motion] .photo-frame {
+    animation: settle-photo 520ms var(--motion-ease) both;
+  }
+
+  [data-intro-motion] .photo-landscape { animation-delay: 35ms; }
+
+  [data-entry-motion] {
+    animation: settle-section 420ms var(--motion-ease);
+  }
+
+  .hero-contact, .menu-toggle, .hero-pagination button::after, .carousel-arrow {
+    transition: scale 170ms var(--motion-ease);
+  }
+
+  .hero-contact:active, .menu-toggle:active, .carousel-arrow:active {
+    scale: .97;
+    transition-duration: 70ms;
+  }
+
+  .hero-pagination button:active::after {
+    scale: .9;
+    transition-duration: 70ms;
+  }
+
+  .announcement[open],
+  .menu-toggle[aria-expanded="true"] + .site-menu {
+    transition: opacity 180ms var(--motion-ease), translate 220ms var(--motion-ease);
+  }
+
+  .announcement[open]::backdrop {
+    transition: opacity 200ms var(--motion-ease);
+  }
+
+  @starting-style {
+    .announcement[open] { opacity: .85; translate: 0 6px; }
+    .announcement[open]::backdrop { opacity: .82; }
+    .menu-toggle[aria-expanded="true"] + .site-menu { opacity: .85; translate: 0 -6px; }
+  }
+}
+
+@keyframes settle-copy {
+  from { translate: 0 6px; }
+  to { translate: none; }
+}
+
+@keyframes settle-photo {
+  from { opacity: .7; translate: 0 10px; }
+  to { opacity: 1; translate: none; }
+}
+
+@keyframes settle-section {
+  from { opacity: .94; translate: 0 9px; }
+  to { opacity: 1; translate: none; }
 }

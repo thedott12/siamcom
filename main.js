@@ -1,4 +1,5 @@
 const compactNavigation = matchMedia("(max-width: 980px)");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const menuButton = document.querySelector(".menu-toggle");
 const menu = document.querySelector("#site-menu");
 
@@ -87,8 +88,8 @@ if (document.documentElement.lang === "th") {
 }
 
 const coverMarkers = [...document.querySelectorAll("[data-cover-slide]")];
-const coverPortrait = document.querySelector("[data-cover-portrait]");
-const coverLandscape = document.querySelector("[data-cover-landscape]");
+let coverPortrait = document.querySelector("[data-cover-portrait]");
+let coverLandscape = document.querySelector("[data-cover-landscape]");
 const coverStatus = document.querySelector("[data-cover-status]");
 const coverPairs = [
   ["workshop", "team"],
@@ -104,24 +105,74 @@ function setCurrent(buttons, current) {
   }
 }
 
-function setCoverImage(target, original) {
-  const image = document.querySelector(`.gallery-${original}`);
-  target.src = image.src;
-  target.alt = image.alt;
-  target.width = image.width;
-  target.height = image.height;
+async function loadPicture(source) {
+  const image = new Image(Number(source.getAttribute("width")), Number(source.getAttribute("height")));
+  image.alt = source.alt;
+  if (source.lang) image.lang = source.lang;
+  image.src = source.src;
+
+  if (typeof image.decode !== "function") return image;
+  try {
+    await image.decode();
+    return image;
+  } catch {
+    return null;
+  }
+}
+
+const pictureFades = new Set();
+
+function swapPicture(previous, next, imageAttribute) {
+  const frame = previous.parentElement;
+  next.setAttribute(imageAttribute, "");
+  if (reducedMotion.matches || typeof next.animate !== "function") {
+    frame.replaceChildren(next);
+    return next;
+  }
+
+  const outgoing = [...frame.children];
+  previous.removeAttribute(imageAttribute);
+  previous.setAttribute("aria-hidden", "true");
+  frame.append(next);
+
+  // Older layers remain beneath an interrupted fade until the new image covers them.
+  const fade = next.animate([{ opacity: 0 }, { opacity: 1 }], {
+    duration: 260,
+    easing: "cubic-bezier(.22, 1, .36, 1)",
+  });
+  pictureFades.add(fade);
+  fade.onfinish = fade.oncancel = () => {
+    pictureFades.delete(fade);
+    for (const image of outgoing) image.remove();
+  };
+  return next;
+}
+
+let displayedCover = coverMarkers.findIndex((button) => button.hasAttribute("aria-current"));
+let coverRequest = 0;
+
+async function selectCoverPair(index, button) {
+  const request = ++coverRequest;
+  if (index === displayedCover) return;
+
+  const [landscape, portrait] = coverPairs[index];
+  const [nextLandscape, nextPortrait] = await Promise.all([
+    loadPicture(document.querySelector(`.gallery-${landscape}`)),
+    loadPicture(document.querySelector(`.gallery-${portrait}`)),
+  ]);
+  if (request !== coverRequest || !nextLandscape || !nextPortrait) return;
+
+  nextPortrait.toggleAttribute("data-contain", portrait !== "training");
+  nextLandscape.toggleAttribute("data-contain", landscape === "workshop" || landscape === "team");
+  coverPortrait = swapPicture(coverPortrait, nextPortrait, "data-cover-portrait");
+  coverLandscape = swapPicture(coverLandscape, nextLandscape, "data-cover-landscape");
+  displayedCover = index;
+  setCurrent(coverMarkers, index);
+  coverStatus.textContent = `${button.getAttribute("aria-label")}. ${coverLandscape.alt}. ${coverPortrait.alt}.`;
 }
 
 for (const [index, button] of coverMarkers.entries()) {
-  button.addEventListener("click", () => {
-    const [landscape, portrait] = coverPairs[index];
-    setCoverImage(coverLandscape, landscape);
-    setCoverImage(coverPortrait, portrait);
-    coverPortrait.toggleAttribute("data-contain", portrait !== "training");
-    coverLandscape.toggleAttribute("data-contain", landscape === "workshop" || landscape === "team");
-    setCurrent(coverMarkers, index);
-    coverStatus.textContent = `${button.getAttribute("aria-label")}. ${coverLandscape.alt}. ${coverPortrait.alt}.`;
-  });
+  button.addEventListener("click", () => selectCoverPair(index, button));
 }
 
 const carousel = document.querySelector(".carousel");
@@ -129,8 +180,10 @@ const courseImages = [...carousel.querySelectorAll("[data-course-image]")];
 const courseMarkers = [...carousel.querySelectorAll("[data-course-slide]")];
 const courseStatus = carousel.querySelector("[data-course-status]");
 const rotation = carousel.querySelector("[data-course-rotation]");
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let activeCourse = 0;
+let requestedCourse = activeCourse;
+let displayedCourseImage = courseImages[activeCourse];
+let courseRequest = 0;
 let rotationEnabled = !reducedMotion.matches;
 let carouselVisible = false;
 let timer;
@@ -150,19 +203,29 @@ function scheduleCourseRotation() {
     carousel.matches(":hover, :focus-within")
   ) return;
 
-  timer = setTimeout(() => {
-    showCourseSlide(activeCourse + 1);
+  timer = setTimeout(async () => {
+    await showCourseSlide(activeCourse + 1);
     scheduleCourseRotation();
   }, 5000);
 }
 
-function showCourseSlide(index, announce = false) {
-  activeCourse = (index + courseImages.length) % courseImages.length;
-  for (const [imageIndex, image] of courseImages.entries()) {
-    image.hidden = imageIndex !== activeCourse;
+async function showCourseSlide(index, announce = false) {
+  const request = ++courseRequest;
+  const nextCourse = (index + courseImages.length) % courseImages.length;
+  requestedCourse = nextCourse;
+  if (nextCourse === activeCourse) return;
+
+  const next = await loadPicture(courseImages[nextCourse]);
+  if (request !== courseRequest) return;
+  if (!next || (!announce && !rotationEnabled)) {
+    requestedCourse = activeCourse;
+    return;
   }
+
+  displayedCourseImage = swapPicture(displayedCourseImage, next, "data-course-image");
+  activeCourse = nextCourse;
   setCurrent(courseMarkers, activeCourse);
-  if (announce) courseStatus.textContent = courseImages[activeCourse].alt;
+  if (announce) courseStatus.textContent = next.alt;
 }
 
 function setRotation(enabled) {
@@ -177,7 +240,7 @@ function selectCourseSlide(index) {
 }
 
 for (const button of carousel.querySelectorAll("[data-course-step]")) {
-  button.addEventListener("click", () => selectCourseSlide(activeCourse + Number(button.dataset.courseStep)));
+  button.addEventListener("click", () => selectCourseSlide(requestedCourse + Number(button.dataset.courseStep)));
 }
 for (const [index, button] of courseMarkers.entries()) {
   button.addEventListener("click", () => selectCourseSlide(index));
@@ -200,12 +263,21 @@ coursePictures.addEventListener("pointerup", (event) => {
   swipeStart = undefined;
 
   if (Math.abs(horizontal) > 40 && Math.abs(horizontal) > Math.abs(vertical)) {
-    selectCourseSlide(activeCourse - Math.sign(horizontal));
+    selectCourseSlide(requestedCourse - Math.sign(horizontal));
   }
 });
 
 rotation.addEventListener("click", () => setRotation(!rotationEnabled));
-reducedMotion.addEventListener("change", () => setRotation(!reducedMotion.matches));
+reducedMotion.addEventListener("change", () => {
+  if (reducedMotion.matches) {
+    for (const fade of pictureFades) fade.finish();
+    document.querySelector(".hero").removeAttribute("data-intro-motion");
+    for (const section of document.querySelectorAll("[data-entry-motion]")) {
+      section.removeAttribute("data-entry-motion");
+    }
+  }
+  setRotation(!reducedMotion.matches);
+});
 carousel.addEventListener("pointerenter", scheduleCourseRotation);
 carousel.addEventListener("pointerleave", scheduleCourseRotation);
 carousel.addEventListener("focusin", scheduleCourseRotation);
@@ -221,6 +293,32 @@ const observer = new IntersectionObserver(([entry]) => {
 
 observer.observe(carousel);
 updateRotationButton();
+
+function startPageMotion() {
+  if (reducedMotion.matches) return;
+
+  const hero = document.querySelector(".hero");
+  const heroTop = hero.getBoundingClientRect().top;
+  if (heroTop >= 0 && heroTop < window.innerHeight) hero.setAttribute("data-intro-motion", "");
+
+  const revealObserver = new IntersectionObserver((entries) => {
+    for (const { target, isIntersecting } of entries) {
+      if (!isIntersecting) continue;
+      revealObserver.unobserve(target);
+      if (!reducedMotion.matches && !target.matches(":target, :focus-within")) {
+        target.setAttribute("data-entry-motion", "");
+      }
+    }
+  }, { rootMargin: "0px 0px 28px" });
+
+  for (const section of document.querySelectorAll(".features, .curriculum, .smart, .assessment, .social, .gallery, .office")) {
+    if (section.getBoundingClientRect().top >= window.innerHeight) revealObserver.observe(section);
+  }
+}
+
+if (notice.open) notice.addEventListener("close", startPageMotion, { once: true });
+else startPageMotion();
+
 const map = document.querySelector("[data-map]");
 const activateMap = map.querySelector(".map-activate");
 
