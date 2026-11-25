@@ -90,6 +90,9 @@ if (document.documentElement.lang === "th") {
 const coverMarkers = [...document.querySelectorAll("[data-cover-slide]")];
 let coverPortrait = document.querySelector("[data-cover-portrait]");
 let coverLandscape = document.querySelector("[data-cover-landscape]");
+const initialCoverPhotos = new Map(
+  [coverPortrait, coverLandscape].map((image) => [image.parentElement, image]),
+);
 const coverStatus = document.querySelector("[data-cover-status]");
 const coverPairs = [
   ["workshop", "team"],
@@ -124,6 +127,7 @@ const pictureFades = new Set();
 
 function swapPicture(previous, next, imageAttribute) {
   const frame = previous.parentElement;
+  frame.removeAttribute("data-intro-pending");
   next.setAttribute(imageAttribute, "");
   if (reducedMotion.matches || typeof next.animate !== "function") {
     frame.replaceChildren(next);
@@ -137,8 +141,8 @@ function swapPicture(previous, next, imageAttribute) {
 
   // Older layers remain beneath an interrupted fade until the new image covers them.
   const fade = next.animate([{ opacity: 0 }, { opacity: 1 }], {
-    duration: 260,
-    easing: "cubic-bezier(.22, 1, .36, 1)",
+    duration: 420,
+    easing: "ease-in-out",
   });
   pictureFades.add(fade);
   fade.onfinish = fade.oncancel = () => {
@@ -153,6 +157,7 @@ let coverRequest = 0;
 
 async function selectCoverPair(index, button) {
   const request = ++coverRequest;
+  for (const frame of initialCoverPhotos.keys()) frame.removeAttribute("data-intro-pending");
   if (index === displayedCover) return;
 
   const [landscape, portrait] = coverPairs[index];
@@ -271,12 +276,13 @@ rotation.addEventListener("click", () => setRotation(!rotationEnabled));
 reducedMotion.addEventListener("change", () => {
   if (reducedMotion.matches) {
     for (const fade of pictureFades) fade.finish();
-    document.querySelector(".hero").removeAttribute("data-intro-motion");
-    for (const section of document.querySelectorAll("[data-entry-motion]")) {
-      section.removeAttribute("data-entry-motion");
+    for (const target of document.querySelectorAll("[data-intro-pending], [data-intro-motion], [data-entry-motion]")) {
+      target.removeAttribute("data-intro-pending");
+      target.removeAttribute("data-intro-motion");
+      target.removeAttribute("data-entry-motion");
     }
+    setRotation(false);
   }
-  setRotation(!reducedMotion.matches);
 });
 carousel.addEventListener("pointerenter", scheduleCourseRotation);
 carousel.addEventListener("pointerleave", scheduleCourseRotation);
@@ -294,25 +300,72 @@ const observer = new IntersectionObserver(([entry]) => {
 observer.observe(carousel);
 updateRotationButton();
 
+const heroCopy = document.querySelector(".hero-copy");
+const entranceInset = 24;
+
+function isInMotionArea(target) {
+  const { top, bottom } = target.getBoundingClientRect();
+  return top <= window.innerHeight - entranceInset && bottom >= entranceInset;
+}
+
+function enterCoverPhoto(frame, image) {
+  function reveal() {
+    const inView = isInMotionArea(frame);
+    frame.removeAttribute("data-intro-pending");
+    if (!reducedMotion.matches && !coverRequest && image.naturalWidth && inView) {
+      frame.setAttribute("data-intro-motion", "");
+    }
+  }
+
+  if (image.complete || typeof image.decode !== "function") reveal();
+  else image.decode().then(reveal, reveal);
+}
+
+function reveal(target) {
+  const mayAnimate = !reducedMotion.matches && !target.matches(":target, :focus-within");
+  const coverImage = initialCoverPhotos.get(target);
+  if (coverImage) {
+    if (mayAnimate && !coverRequest) enterCoverPhoto(target, coverImage);
+    else target.removeAttribute("data-intro-pending");
+    return;
+  }
+
+  if (!mayAnimate) return;
+  if (target === heroCopy) {
+    target.setAttribute("data-intro-motion", "");
+  } else if (target instanceof HTMLImageElement && !target.complete && typeof target.decode === "function") {
+    target.decode().then(() => {
+      if (!reducedMotion.matches && isInMotionArea(target)) target.setAttribute("data-entry-motion", "");
+    }, () => {});
+  } else {
+    target.setAttribute("data-entry-motion", "");
+  }
+}
+
 function startPageMotion() {
-  if (reducedMotion.matches) return;
-
-  const hero = document.querySelector(".hero");
-  const heroTop = hero.getBoundingClientRect().top;
-  if (heroTop >= 0 && heroTop < window.innerHeight) hero.setAttribute("data-intro-motion", "");
-
   const revealObserver = new IntersectionObserver((entries) => {
     for (const { target, isIntersecting } of entries) {
       if (!isIntersecting) continue;
       revealObserver.unobserve(target);
-      if (!reducedMotion.matches && !target.matches(":target, :focus-within")) {
-        target.setAttribute("data-entry-motion", "");
-      }
+      reveal(target);
     }
-  }, { rootMargin: "0px 0px 28px" });
+  }, { rootMargin: `-${entranceInset}px 0px -${entranceInset}px` });
 
-  for (const section of document.querySelectorAll(".features, .curriculum, .smart, .assessment, .social, .gallery, .office")) {
-    if (section.getBoundingClientRect().top >= window.innerHeight) revealObserver.observe(section);
+  const sections = document.querySelectorAll(
+    ".feature, .curriculum-intro, .course, .smart-panel, .school-hours, .assessment, .social, .gallery-heading, .gallery-photos > img, .office",
+  );
+  const targets = [heroCopy, ...initialCoverPhotos.keys(), ...sections];
+  const visible = new Set(targets.filter(isInMotionArea));
+  for (const target of targets) {
+    if (visible.has(target)) reveal(target);
+    else revealObserver.observe(target);
+  }
+}
+
+// Prepare the photo entrance before the notice disappears or a cold image is painted.
+if (!reducedMotion.matches) {
+  for (const [frame, image] of initialCoverPhotos) {
+    if (notice.open || !image.complete) frame.setAttribute("data-intro-pending", "");
   }
 }
 

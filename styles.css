@@ -60,7 +60,7 @@
   --neutral: #eeece9;
   --charcoal: #241e20;
   --on-dark: #f3eeee;
-  --motion-ease: cubic-bezier(.22, 1, .36, 1);
+  --motion-ease: cubic-bezier(.22, .68, .28, 1);
   --font-body: "Anuphan", "Leelawadee UI", sans-serif;
   --font-display: "Space Grotesk", "Bai Jamjuree", sans-serif;
   --font-heading: "Bai Jamjuree", "Leelawadee UI", sans-serif;
@@ -961,18 +961,23 @@ button { padding: 0; border: 0; background: transparent; cursor: pointer; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  [data-intro-motion] .hero-copy {
-    animation: settle-copy 420ms var(--motion-ease);
+  .hero-copy[data-intro-motion] {
+    animation: settle-copy 650ms var(--motion-ease);
   }
 
-  [data-intro-motion] .photo-frame {
-    animation: settle-photo 520ms var(--motion-ease) both;
+  .photo-frame[data-intro-pending] {
+    opacity: .24;
+    translate: 0 clamp(14px, 2vw, 24px);
   }
 
-  [data-intro-motion] .photo-landscape { animation-delay: 35ms; }
+  .photo-frame[data-intro-motion] {
+    animation: settle-photo 720ms var(--motion-ease) backwards;
+  }
+
+  .photo-landscape[data-intro-motion] { animation-delay: 60ms; }
 
   [data-entry-motion] {
-    animation: settle-section 420ms var(--motion-ease);
+    animation: settle-section 590ms var(--motion-ease);
   }
 
   .hero-contact, .menu-toggle, .hero-pagination button::after, .carousel-arrow {
@@ -1006,16 +1011,16 @@ button { padding: 0; border: 0; background: transparent; cursor: pointer; }
 }
 
 @keyframes settle-copy {
-  from { translate: 0 6px; }
+  from { translate: 0 clamp(14px, 2vw, 25px); }
   to { translate: none; }
 }
 
 @keyframes settle-photo {
-  from { opacity: .7; translate: 0 10px; }
+  from { opacity: .24; translate: 0 clamp(14px, 2vw, 24px); }
   to { opacity: 1; translate: none; }
 }
 
 @keyframes settle-section {
-  from { opacity: .94; translate: 0 9px; }
+  from { opacity: .72; translate: 0 clamp(12px, 1.8vw, 22px); }
   to { opacity: 1; translate: none; }
 }
